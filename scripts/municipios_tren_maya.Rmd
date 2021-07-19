@@ -1,0 +1,1176 @@
+---
+title: "tren_maya_municipios"
+author: "Aritzy Sánchez"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r data, include=FALSE}
+library(pacman)
+p_load(readr, tidyverse, plyr, dplyr, tidyr, reshape,scales, ggplot2, kableExtra, ggthemes, ggrepel, data.table)
+
+datos <- read_csv("/Users/HP/Documents/Descifra/Incidencia delictiva/Municipal-Delitos-2015-2020_may2020.csv", 
+                       locale = locale(encoding = "latin1"))
+
+pob_1 <- read_csv("/Users/HP/Documents/Descifra/Incidencia delictiva/pob_mun 2015-2030/base_municipios_final_datos_01.csv", locale = locale(encoding = "latin1"))
+
+pob_2 <- read_csv("/Users/HP/Documents/Descifra/Incidencia delictiva/pob_mun 2015-2030/base_municipios_final_datos_02.csv", locale = locale(encoding = "latin1"))
+
+```
+### Datos de incidencia delictiva del SE-SNSP
+Descripción de `datos`: la BD comprende la incidencia delictiva presentada por el Secretarido Ejecutivo, desde un punto de vista de los casos mas no de las víctimas. El periodo de recopilación va de 2015 a 2020 e incluyen los siguientes elementos: año, clave_entidad, entidad, clave_mun, municipio, bien jurídico afectado, tipo de delito, subtipo de delito, modalidad (tipo de arma / con o sin violencia) y mes.
+
+[página para descarga de datos](https://www.gob.mx/sesnsp/acciones-y-programas/incidencia-delictiva-del-fuero-comun-nueva-metodologia?state=published)
+
+```{r datos-filtro-por-delito, echo=FALSE}
+
+nombres <- names(datos)[3:7]
+
+datos[, nombres] <- apply(datos[, nombres], 2, function(x) as.character(x))
+
+#Renombrar variables
+
+colnames(datos) <- c("Anual","Clave_ent","Entidad","Clave_mun", "Municipio", "Bien jurídico afectado","Tipo","Subtipo","Modalidad",
+                     "01","02","03","04","05","06","07","08","09","10","11","12")
+
+
+datos_incidencia <- datos[datos$Tipo=="Homicidio" & datos$Subtipo=="Homicidio doloso" | datos$Tipo== "Secuestro"| 
+                    datos$Tipo== "Extorsión"| datos$Tipo== "Robo" & datos$Modalidad=="Robo de coche de 4 ruedas Con violencia" | datos$Tipo== "Lesiones" & datos$Subtipo=="Lesiones dolosas"  |
+                    datos$Tipo== "Robo" & datos$Modalidad == "Robo de motocicleta Con violencia" | 
+                    datos$Tipo== "Abuso sexual"| 
+                    datos$Tipo== "Robo" & datos$Modalidad == "Robo de embarcaciones pequeñas y grandes Con violencia"| 
+                    datos$Tipo== "Feminicidio"| datos$Tipo== "Narcomenudeo"|datos$Tipo== "Tráfico de menores"|
+                    datos$Tipo== "Violencia familiar"|datos$Tipo== "Trata de personas"|datos$Tipo=="Violencia de género en todas sus modalidades distinta a la violencia familiar"|datos$Subtipo== "Robo a casa habitación" | datos$Subtipo== "Robo de maquinaria"| datos$Subtipo== "Robo de maquinaria"| 
+                    datos$Subtipo== "Robo a transeúnte en vía pública" | 
+                    datos$Subtipo== "Robo a transeúnte en espacio abierto al público"|
+                    datos$Subtipo== "Robo a transportista",]
+
+```
+
+```{r datos-maquinaria-mod, echo=FALSE}
+
+datos_incidencia$Modalidad <- case_when(datos_incidencia$Modalidad== "Robo de cables, tubos y otros objetos destinados a servicios públicos Con violencia" ~ "Robo de cables, tubos y otros objetos destinados a servicios públicos", 
+                                             datos_incidencia$Modalidad== "Robo de cables, tubos y otros objetos destinados a servicios públicos Sin violencia" ~ "Robo de cables, tubos y otros objetos destinados a servicios públicos", 
+                                             datos_incidencia$Modalidad== "Robo de herramienta industrial o agrícola Con violencia" ~ "Robo de herramienta industrial o agrícola", 
+                                             datos_incidencia$Modalidad == "Robo de herramienta industrial o agrícola Sin violencia" ~ "Robo de herramienta industrial o agrícola", 
+                                             datos_incidencia$Modalidad == "Robo de tractores Con violencia" ~ "Robo de tractores",
+                                             datos_incidencia$Modalidad== "Robo de tractores Sin violencia" ~ "Robo de tractores")
+```
+
+
+```{r datos-filtro-nac, echo=FALSE}
+
+datos_incidencia <-  gather(datos_incidencia, Mes , value=Incidencia, "01":"12")
+
+datos_incidencia_nacional <- aggregate(Incidencia ~ Subtipo + Mes + Anual , data= datos_incidencia, sum)
+
+#Renombrar meses
+
+datos_incidencia_nacional <- datos_incidencia_nacional %>% 
+  mutate(Mes= ifelse( `Mes` == "01", "enero",
+                      ifelse(`Mes` == "02", "febrero",
+                             ifelse(`Mes` == "03", "marzo",
+                                    ifelse(`Mes` == "04", "abril",
+                                           ifelse(`Mes` == "05", "mayo",
+                                                  ifelse(`Mes` == "06", "junio",
+                                                         ifelse(`Mes` == "07", "julio",
+                                                                ifelse(`Mes` == "08", "agosto",
+                                                                       ifelse(`Mes` == "09", "septiembre",
+                                                                              ifelse(`Mes` == "10", "octubre",
+                                                                                     ifelse(`Mes` == "11", "noviembre", "diciembre"))))))))))))
+
+datos_incidencia_nacional$Anual <- as.factor(datos_incidencia_nacional$Anual)
+
+```
+
+
+```{r datos-modalidad-nac, echo=FALSE}
+
+datos_modalidad_nacional <- aggregate(Incidencia ~ Subtipo + Modalidad + Mes + Anual , data= datos_incidencia, sum)
+
+#Renombrar meses
+
+datos_modalidad_nacional <- datos_modalidad_nacional %>% 
+  mutate(Mes= ifelse( `Mes` == "01", "enero",
+                      ifelse(`Mes` == "02", "febrero",
+                             ifelse(`Mes` == "03", "marzo",
+                                    ifelse(`Mes` == "04", "abril",
+                                           ifelse(`Mes` == "05", "mayo",
+                                                  ifelse(`Mes` == "06", "junio",
+                                                         ifelse(`Mes` == "07", "julio",
+                                                                ifelse(`Mes` == "08", "agosto",
+                                                                       ifelse(`Mes` == "09", "septiembre",
+                                                                              ifelse(`Mes` == "10", "octubre",
+                                                                                     ifelse(`Mes` == "11", "noviembre", "diciembre"))))))))))))
+
+datos_modalidad_nacional$Anual <- as.factor(datos_modalidad_nacional$Anual)
+
+```
+
+```{r datos-filtro-ent, echo=FALSE}
+
+datos_incidencia_entidad <- aggregate(Incidencia ~ Subtipo + Clave_ent + Entidad + Mes + Anual , data= datos_incidencia, sum)
+
+datos_incidencia_entidad <- spread(datos_incidencia_entidad, Anual, Incidencia)
+  
+```
+
+```{r datos-modalidad-ent, echo=FALSE}
+
+datos_modalidad_entidad <- aggregate(Incidencia ~ Subtipo + Modalidad + Clave_ent + Entidad + Mes + Anual , data= datos_incidencia, sum)
+
+datos_modalidad_entidad <- spread(datos_modalidad_entidad, Anual, Incidencia)
+  
+```
+
+```{r datos-names-ent, echo=FALSE}
+
+#Renombrar meses
+
+datos_incidencia_entidad <- datos_incidencia_entidad %>% 
+  mutate(Mes= ifelse( `Mes` == "01", "enero",
+                     ifelse(`Mes` == "02", "febrero",
+                            ifelse(`Mes` == "03", "marzo",
+                                   ifelse(`Mes` == "04", "abril",
+                                          ifelse(`Mes` == "05", "mayo",
+                                                 ifelse(`Mes` == "06", "junio",
+                                                        ifelse(`Mes` == "07", "julio",
+                                                               ifelse(`Mes` == "08", "agosto",
+                                                                      ifelse(`Mes` == "09", "septiembre",
+                                                                             ifelse(`Mes` == "10", "octubre",
+                                                                                    ifelse(`Mes` == "11", "noviembre", "diciembre"))))))))))))
+
+```
+
+```{r datos-names-mod-ent, echo=FALSE}
+
+#Renombrar meses
+
+datos_modalidad_entidad <- datos_modalidad_entidad %>% 
+  mutate(Mes= ifelse( `Mes` == "01", "enero",
+                     ifelse(`Mes` == "02", "febrero",
+                            ifelse(`Mes` == "03", "marzo",
+                                   ifelse(`Mes` == "04", "abril",
+                                          ifelse(`Mes` == "05", "mayo",
+                                                 ifelse(`Mes` == "06", "junio",
+                                                        ifelse(`Mes` == "07", "julio",
+                                                               ifelse(`Mes` == "08", "agosto",
+                                                                      ifelse(`Mes` == "09", "septiembre",
+                                                                             ifelse(`Mes` == "10", "octubre",
+                                                                                    ifelse(`Mes` == "11", "noviembre", "diciembre"))))))))))))
+
+```
+
+```{r datos-long-ent, echo=FALSE}
+
+datos_incidencia_ent_long <- melt(datos_incidencia_entidad, id = c("Subtipo", "Clave_ent", "Entidad", "Mes"))
+
+names(datos_incidencia_ent_long)[5] <- "Anual"
+
+names(datos_incidencia_ent_long)[6] <- "Incidencia" 
+
+datos_incidencia_ent_long$Mes <- as.factor(datos_incidencia_ent_long$Mes)
+
+datos_incidencia_ent_long$Mes <- ordered(datos_incidencia_ent_long$Mes, levels = c("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"))
+
+```
+
+```{r datos-mod-long-ent, echo=FALSE}
+
+datos_modalidad_ent_long <- melt(datos_modalidad_entidad, id = c("Subtipo", "Modalidad", "Clave_ent", "Entidad", "Mes"))
+
+names(datos_modalidad_ent_long)[6] <- "Anual"
+
+names(datos_modalidad_ent_long)[7] <- "Incidencia" 
+
+datos_modalidad_ent_long$Mes <- as.factor(datos_modalidad_ent_long$Mes)
+
+datos_modalidad_ent_long$Mes <- ordered(datos_modalidad_ent_long$Mes, levels = c("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"))
+
+```
+
+```{r datos-mun, echo=FALSE}
+
+datos_incidencia_mun <- aggregate(Incidencia ~ Subtipo + Clave_ent + Entidad + Clave_mun + Municipio + Mes + Anual , data= datos_incidencia, sum)
+
+datos_incidencia_mun <- spread(datos_incidencia_mun, Anual, Incidencia)
+
+```
+
+```{r datos-mod-mun, echo=FALSE}
+
+datos_modalidad_mun <- aggregate(Incidencia ~ Subtipo + Modalidad + Clave_ent + Entidad + Clave_mun + Municipio + Mes + Anual , data= datos_incidencia, sum)
+
+datos_modalidad_mun <- spread(datos_modalidad_mun, Anual, Incidencia)
+
+```
+
+```{r datos-names-mun, echo=FALSE}
+
+#Renombrar meses
+
+datos_incidencia_mun <- datos_incidencia_mun %>% 
+  mutate(Mes= ifelse( `Mes` == "01", "enero",
+                     ifelse(`Mes` == "02", "febrero",
+                            ifelse(`Mes` == "03", "marzo",
+                                   ifelse(`Mes` == "04", "abril",
+                                          ifelse(`Mes` == "05", "mayo",
+                                                 ifelse(`Mes` == "06", "junio",
+                                                        ifelse(`Mes` == "07", "julio",
+                                                               ifelse(`Mes` == "08", "agosto",
+                                                                      ifelse(`Mes` == "09", "septiembre",
+                                                                             ifelse(`Mes` == "10", "octubre",
+                                                                                    ifelse(`Mes` == "11", "noviembre", "diciembre"))))))))))))
+
+```
+
+```{r datos-mod-names-mun, echo=FALSE}
+
+#Renombrar meses
+
+datos_modalidad_mun <- datos_modalidad_mun %>% 
+  mutate(Mes= ifelse( `Mes` == "01", "enero",
+                     ifelse(`Mes` == "02", "febrero",
+                            ifelse(`Mes` == "03", "marzo",
+                                   ifelse(`Mes` == "04", "abril",
+                                          ifelse(`Mes` == "05", "mayo",
+                                                 ifelse(`Mes` == "06", "junio",
+                                                        ifelse(`Mes` == "07", "julio",
+                                                               ifelse(`Mes` == "08", "agosto",
+                                                                      ifelse(`Mes` == "09", "septiembre",
+                                                                             ifelse(`Mes` == "10", "octubre",
+                                                                                    ifelse(`Mes` == "11", "noviembre", "diciembre"))))))))))))
+
+```
+
+```{r datos-long-mun, echo=FALSE}
+
+datos_incidencia_mun_long <- melt(datos_incidencia_mun, id = c("Subtipo", "Clave_ent", "Entidad", "Clave_mun", "Municipio", "Mes"))
+
+names(datos_incidencia_mun_long)[7] <- "Anual" 
+
+names(datos_incidencia_mun_long)[8] <- "Incidencia" 
+
+datos_incidencia_mun_long$Mes <- as.factor(datos_incidencia_mun_long$Mes)
+
+datos_incidencia_mun_long$Mes <- ordered(datos_incidencia_mun_long$Mes, levels = c("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"))
+
+datos_incidencia_mun_long$Clave_mun <- as.numeric(datos_incidencia_mun_long$Clave_mun)
+
+datos_incidencia_mun_long <- datos_incidencia_mun_long %>% 
+  filter(Municipio != "Otros Municipios" & Municipio != "No Especificado")
+
+```
+
+```{r datos-mod-long-mun, echo=FALSE}
+
+datos_modalidad_mun_long <- melt(datos_modalidad_mun, id = c("Subtipo", "Modalidad", "Clave_ent", "Entidad", "Clave_mun", "Municipio", "Mes"))
+
+names(datos_modalidad_mun_long)[8] <- "Anual" 
+
+names(datos_modalidad_mun_long)[9] <- "Incidencia" 
+
+datos_modalidad_mun_long$Mes <- as.factor(datos_modalidad_mun_long$Mes)
+
+datos_modalidad_mun_long$Mes <- ordered(datos_modalidad_mun_long$Mes, levels = c("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"))
+
+datos_modalidad_mun_long$Clave_mun <- as.numeric(datos_modalidad_mun_long$Clave_mun)
+
+datos_modalidad_mun_long <- datos_modalidad_mun_long %>% 
+  filter(Municipio != "Otros Municipios" & Municipio != "No Especificado")
+
+```
+
+```{r poblacion-nac, echo=FALSE}
+
+pobtot <- rbind(pob_1, pob_2)
+
+pobtot <- pobtot %>% 
+  select(2:9)
+
+colnames(pobtot) <- c("Clave_mun", "Clave_ent", "Entidad", "Municipio", "Sexo", "Anual", "Grp_edad", "Pob")
+
+pobtot_nac <- aggregate(Pob ~ Anual, data= pobtot, sum)
+
+pobtot_nac$Anual <- as.factor(pobtot_nac$Anual)
+
+```
+
+```{r datos-anuales-nac, echo=FALSE}
+
+datos_2019_nac <- datos_incidencia_nacional %>% 
+  filter(Anual %in% c("2015", "2016", "2017", "2018", "2019")) 
+
+datos_2019_nac <- aggregate(Incidencia ~ Subtipo + Anual , data= datos_2019_nac, sum)
+
+pobtot_2019_nac <- pobtot_nac %>% 
+  filter(Anual %in% c("2015", "2016", "2017", "2018", "2019")) 
+
+datos_2019_nac <- left_join(datos_2019_nac, pobtot_2019_nac, by= c("Anual"))
+
+datos_2019_nac <- datos_2019_nac %>% 
+  mutate(Tasa_anual = round(((Incidencia/Pob)*100000), 2))
+
+datos_2019_nac_totales <- datos_2019_nac %>% 
+  select(1:3)
+
+datos_2019_nac_tasas <- datos_2019_nac %>% 
+  select(1:2, 5)
+
+datos_2020_nac <- datos_incidencia_nacional[datos_incidencia_nacional$Anual== "2019" & datos_incidencia_nacional$Mes == "junio" | datos_incidencia_nacional$Anual== "2019" & datos_incidencia_nacional$Mes == "julio" | datos_incidencia_nacional$Anual== "2019" & datos_incidencia_nacional$Mes == "agosto" | datos_incidencia_nacional$Anual== "2019" & datos_incidencia_nacional$Mes == "septiembre" | datos_incidencia_nacional$Anual== "2019" & datos_incidencia_nacional$Mes == "octubre" | datos_incidencia_nacional$Anual== "2019" & datos_incidencia_nacional$Mes == "noviembre" | datos_incidencia_nacional$Anual== "2019" & datos_incidencia_nacional$Mes == "diciembre" | datos_incidencia_nacional$Anual== "2020",]
+
+datos_2020_nac <- aggregate(Incidencia ~ Subtipo , data= datos_2020_nac, sum)
+
+#insertamos población en rango de años a tratar
+
+pobtot_2020_nac <- pobtot_nac %>% 
+  filter(Anual %in% "2020") 
+
+datos_2020_nac$Pob <- 127792286
+
+datos_2020_nac <- datos_2020_nac %>% 
+  mutate(Tasa_anual = round(((Incidencia/Pob)*100000), 2))
+
+datos_2020_nac$Anual <- 2020
+
+datos_2020_nac_totales <- datos_2020_nac %>% 
+  select(1, 5, 2)
+
+datos_2020_nac_tasas <- datos_2020_nac %>% 
+  select(1,5, 4)
+
+datos_totales_anuales_nac <- rbind(datos_2019_nac_totales, datos_2020_nac_totales)
+
+datos_totales_anuales_nac$Zona <- "Nacional"
+
+datos_totales_anuales_nac <- datos_totales_anuales_nac %>% 
+  select(4, 1:3)
+
+datos_tasas_anuales_nac <- rbind(datos_2019_nac_tasas, datos_2020_nac_tasas)
+
+datos_tasas_anuales_nac$Zona <- "Nacional"
+
+datos_tasas_anuales_nac <- datos_tasas_anuales_nac %>% 
+  select(4, 1:3)
+
+```
+```{r datos-mod-anuales-nac, echo=FALSE}
+
+datos_mod_2019_nac <- datos_modalidad_nacional %>% 
+  filter(Anual %in% c("2015", "2016", "2017", "2018", "2019")) 
+
+datos_mod_2019_nac <- aggregate(Incidencia ~ Subtipo + Modalidad + Anual , data= datos_mod_2019_nac, sum)
+
+pobtot_2019_nac <- pobtot_nac %>% 
+  filter(Anual %in% c("2015", "2016", "2017", "2018", "2019")) 
+
+datos_mod_2019_nac <- left_join(datos_mod_2019_nac, pobtot_2019_nac, by= c("Anual"))
+
+datos_mod_2019_nac <- datos_mod_2019_nac %>% 
+  mutate(Tasa_anual = round(((Incidencia/Pob)*100000), 2))
+
+datos_mod_2019_nac_totales <- datos_mod_2019_nac %>% 
+  select(1:4)
+
+datos_mod_2019_nac_tasas <- datos_mod_2019_nac %>% 
+  select(1:3, 6)
+
+datos_mod_2020_nac <- datos_modalidad_nacional[datos_modalidad_nacional$Anual== "2019" & datos_modalidad_nacional$Mes == "junio" | datos_modalidad_nacional$Anual== "2019" & datos_modalidad_nacional$Mes == "julio" | datos_modalidad_nacional$Anual== "2019" & datos_modalidad_nacional$Mes == "agosto" | datos_modalidad_nacional$Anual== "2019" & datos_modalidad_nacional$Mes == "septiembre" | datos_modalidad_nacional$Anual== "2019" & datos_modalidad_nacional$Mes == "octubre" | datos_modalidad_nacional$Anual== "2019" & datos_modalidad_nacional$Mes == "noviembre" | datos_modalidad_nacional$Anual== "2019" & datos_modalidad_nacional$Mes == "diciembre" | datos_modalidad_nacional$Anual== "2020",]
+
+datos_mod_2020_nac <- aggregate(Incidencia ~ Subtipo + Modalidad , data= datos_mod_2020_nac, sum)
+
+#insertamos población en rango de años a tratar
+
+pobtot_2020_nac <- pobtot_nac %>% 
+  filter(Anual %in% "2020") 
+
+datos_mod_2020_nac$Pob <- 127792286
+
+datos_mod_2020_nac <- datos_mod_2020_nac %>% 
+  mutate(Tasa_anual = round(((Incidencia/Pob)*100000), 2))
+
+datos_mod_2020_nac$Anual <- 2020
+
+datos_mod_2020_nac_totales <- datos_mod_2020_nac %>% 
+  select(1, 2, 6, 3)
+
+datos_mod_2020_nac_tasas <- datos_mod_2020_nac %>% 
+  select(1,2, 6, 5)
+
+datos_totales_anuales_mod_nac <- rbind(datos_mod_2019_nac_totales, datos_mod_2020_nac_totales)
+
+datos_totales_anuales_mod_nac$Zona <- "Nacional"
+
+datos_totales_anuales_mod_nac <- datos_totales_anuales_mod_nac %>% 
+  select(5, 1:4)
+
+datos_tasas_anuales_mod_nac <- rbind(datos_mod_2019_nac_tasas, datos_mod_2020_nac_tasas)
+
+datos_tasas_anuales_mod_nac$Zona <- "Nacional"
+
+datos_tasas_anuales_mod_nac <- datos_tasas_anuales_mod_nac %>% 
+  select(5, 1:4)
+
+```
+
+
+```{r poblacion-ent, echo=FALSE}
+
+pobtot_ent <- aggregate(Pob ~ Clave_ent + Anual, data= pobtot, sum)
+
+pobtot_ent$Anual <- as.factor(pobtot_ent$Anual)
+
+```
+
+```{r datos-anuales-ent, echo=FALSE}
+
+### Incidencia anual de delitos en números absolutos para las entidades y proyección 2020
+
+datos_2019_ent <- datos_incidencia_ent_long %>% 
+  filter(Anual %in% c("2015", "2016", "2017", "2018", "2019")) 
+
+datos_2019_ent <- aggregate(Incidencia ~ Subtipo + Clave_ent + Entidad + Anual , data= datos_2019_ent, sum)
+
+pob_2019_ent <- pobtot_ent %>% 
+  filter(Anual %in% c("2015", "2016", "2017", "2018", "2019")) 
+
+pob_2019_ent$Anual <- as.factor(pob_2019_ent$Anual)
+
+datos_2019_ent <- left_join(datos_2019_ent, pob_2019_ent, by= c("Clave_ent", "Anual"))
+
+datos_2019_ent <- datos_2019_ent %>% 
+  mutate(Tasa_anual = round(((Incidencia/Pob)*100000), 2))
+
+datos_2019_ent_totales <- datos_2019_ent %>% 
+  select(1:5)
+
+datos_2019_ent_tasas <- datos_2019_ent %>% 
+  select(1:4, 7)
+
+datos_2020_ent <- datos_incidencia_ent_long[datos_incidencia_ent_long$Anual== "2019" & datos_incidencia_ent_long$Mes == "junio" | datos_incidencia_ent_long$Anual== "2019" & datos_incidencia_ent_long$Mes == "julio" | datos_incidencia_ent_long$Anual== "2019" & datos_incidencia_ent_long$Mes == "agosto" | datos_incidencia_ent_long$Anual== "2019" & datos_incidencia_ent_long$Mes == "septiembre" | datos_incidencia_ent_long$Anual== "2019" & datos_incidencia_ent_long$Mes == "octubre" | datos_incidencia_ent_long$Anual== "2019" & datos_incidencia_ent_long$Mes == "noviembre" | datos_incidencia_ent_long$Anual== "2019" & datos_incidencia_ent_long$Mes == "diciembre" | datos_incidencia_ent_long$Anual== "2020",]
+
+datos_2020_ent <- aggregate(Incidencia ~ Subtipo + Clave_ent + Entidad , data= datos_2020_ent, sum)
+
+#insertamos población en rango de años a tratar
+
+pob_2020_ent <- pobtot_ent %>% 
+  filter(Anual %in% "2020") 
+
+datos_2020_ent <- left_join(datos_2020_ent, pob_2020_ent, by= c("Clave_ent"))
+
+datos_2020_ent <- datos_2020_ent %>% 
+  mutate(Tasa_anual = round(((Incidencia/Pob)*100000), 2))
+
+datos_2020_ent_totales <- datos_2020_ent %>% 
+  select(1:3, 5, 4)
+
+datos_2020_ent_tasas <- datos_2020_ent %>% 
+  select(1:3, 5, 7)
+
+datos_totales_anuales_ent <- rbind(datos_2019_ent_totales, datos_2020_ent_totales)
+
+datos_tasas_anuales_ent <- rbind(datos_2019_ent_tasas, datos_2020_ent_tasas)
+
+```
+
+```{r datos-mod-anuales-ent, echo=FALSE}
+
+### Incidencia anual de delitos en números absolutos para las entidades y proyección 2020
+
+datos_mod_2019_ent <- datos_modalidad_ent_long %>% 
+  filter(Anual %in% c("2015", "2016", "2017", "2018", "2019")) 
+
+datos_mod_2019_ent <- aggregate(Incidencia ~ Subtipo + Modalidad + Clave_ent + Entidad + Anual , data= datos_mod_2019_ent, sum)
+
+pob_2019_ent <- pobtot_ent %>% 
+  filter(Anual %in% c("2015", "2016", "2017", "2018", "2019")) 
+
+pob_2019_ent$Anual <- as.factor(pob_2019_ent$Anual)
+
+datos_mod_2019_ent <- left_join(datos_mod_2019_ent, pob_2019_ent, by= c("Clave_ent", "Anual"))
+
+datos_mod_2019_ent <- datos_mod_2019_ent %>% 
+  mutate(Tasa_anual = round(((Incidencia/Pob)*100000), 2))
+
+datos_mod_2019_ent_totales <- datos_mod_2019_ent %>% 
+  select(1:6)
+
+datos_mod_2019_ent_tasas <- datos_mod_2019_ent %>% 
+  select(1:5, 8)
+
+datos_mod_2020_ent <- datos_modalidad_ent_long[datos_modalidad_ent_long$Anual== "2019" & datos_modalidad_ent_long$Mes == "junio" | datos_modalidad_ent_long$Anual== "2019" & datos_modalidad_ent_long$Mes == "julio" | datos_modalidad_ent_long$Anual== "2019" & datos_modalidad_ent_long$Mes == "agosto" | datos_modalidad_ent_long$Anual== "2019" & datos_modalidad_ent_long$Mes == "septiembre" | datos_modalidad_ent_long$Anual== "2019" & datos_modalidad_ent_long$Mes == "octubre" | datos_modalidad_ent_long$Anual== "2019" & datos_modalidad_ent_long$Mes == "noviembre" | datos_modalidad_ent_long$Anual== "2019" & datos_modalidad_ent_long$Mes == "diciembre" | datos_modalidad_ent_long$Anual== "2020",]
+
+datos_mod_2020_ent <- aggregate(Incidencia ~ Subtipo + Modalidad + Clave_ent + Entidad , data= datos_mod_2020_ent, sum)
+
+#insertamos población en rango de años a tratar
+
+pob_2020_ent <- pobtot_ent %>% 
+  filter(Anual %in% "2020") 
+
+datos_mod_2020_ent <- left_join(datos_mod_2020_ent, pob_2020_ent, by= c("Clave_ent"))
+
+datos_mod_2020_ent <- datos_mod_2020_ent %>% 
+  mutate(Tasa_anual = round(((Incidencia/Pob)*100000), 2))
+
+datos_mod_2020_ent_totales <- datos_mod_2020_ent %>% 
+  select(1:4, 6, 5)
+
+datos_mod_2020_ent_tasas <- datos_mod_2020_ent %>% 
+  select(1:4, 6, 8)
+
+datos_totales_anuales_mod_ent <- rbind(datos_mod_2019_ent_totales, datos_mod_2020_ent_totales)
+
+datos_tasas_anuales_mod_ent <- rbind(datos_mod_2019_ent_tasas, datos_mod_2020_ent_tasas)
+
+```
+
+
+```{r poblacion-mun, echo=FALSE}
+
+pobtot <- aggregate(Pob ~ Clave_ent + Entidad + Municipio + Clave_mun + Anual, data= pobtot, sum)
+
+pobtot$Anual <- as.factor(pobtot$Anual)
+
+```
+
+```{r datos-anuales-mun, echo=FALSE}
+
+### Incidencia anual de delitos en números absolutos para los municipios y proyección 2020
+
+#datos para 2019
+
+datos_2019_mun <- datos_incidencia_mun_long %>% 
+  filter(Anual %in% c("2015", "2016", "2017", "2018", "2019")) 
+
+datos_2019_mun <- aggregate(Incidencia ~ Subtipo + Clave_ent + Entidad + Clave_mun + Municipio + Anual , data= datos_2019_mun, sum)
+
+#insertamos población en rango de años a tratar
+
+pob_2019 <- pobtot %>% 
+  filter(Anual %in% c("2015", "2016", "2017", "2018", "2019")) 
+
+datos_2019_mun <- left_join(datos_2019_mun, pob_2019, by= c("Clave_ent", "Clave_mun", "Anual"))
+
+datos_2019_mun$Entidad.y <- NULL
+datos_2019_mun$Municipio.y <- NULL
+
+names(datos_2019_mun)[3] <- "Entidad"
+names(datos_2019_mun)[5] <- "Municipio"
+
+datos_2019_mun <- datos_2019_mun %>% 
+  mutate(Tasa_anual = round(((Incidencia/Pob)*100000), 2))
+
+datos_2019_mun_totales <- datos_2019_mun %>% 
+  select(1:7)
+
+datos_2019_mun_tasas <- datos_2019_mun %>% 
+  select(1:6, 9) 
+
+#datos 2020 
+
+datos_2020_mun <- datos_incidencia_mun_long[datos_incidencia_mun_long$Anual== "2019" & datos_incidencia_mun_long$Mes == "junio" | datos_incidencia_mun_long$Anual== "2019" & datos_incidencia_mun_long$Mes == "julio" | datos_incidencia_mun_long$Anual== "2019" & datos_incidencia_mun_long$Mes == "agosto" | datos_incidencia_mun_long$Anual== "2019" & datos_incidencia_mun_long$Mes == "septiembre" | datos_incidencia_mun_long$Anual== "2019" & datos_incidencia_mun_long$Mes == "octubre" | datos_incidencia_mun_long$Anual== "2019" & datos_incidencia_mun_long$Mes == "noviembre" | datos_incidencia_mun_long$Anual== "2019" & datos_incidencia_mun_long$Mes == "diciembre" | datos_incidencia_mun_long$Anual== "2020",]
+
+datos_2020_mun <- aggregate(Incidencia ~ Subtipo + Clave_ent + Entidad + Clave_mun + Municipio, data= datos_2020_mun, sum)
+
+#insertamos población en rango de años a tratar
+
+pob_2020 <- pobtot %>% 
+  filter(Anual %in% "2020") 
+
+pob_2020 <- pob_2020 %>% 
+  select(1:4,6)
+
+datos_2020_mun <- left_join(datos_2020_mun, pob_2020, by= c("Clave_ent", "Clave_mun"))
+
+datos_2020_mun$Entidad.y <- NULL
+datos_2020_mun$Municipio.y <- NULL
+
+names(datos_2020_mun)[3] <- "Entidad" 
+names(datos_2020_mun)[5] <- "Municipio" 
+
+datos_2020_mun <- datos_2020_mun %>% 
+  mutate(Tasa_anual = round(((Incidencia/Pob)*100000), 2))
+
+datos_2020_mun$Anual <- 2020
+
+datos_2020_mun_totales <- datos_2020_mun %>% 
+  select(1:5, 9, 6)
+
+datos_2020_mun_tasas <- datos_2020_mun %>% 
+  select(1:5, 9, 8)
+
+datos_totales_anuales_mun <- rbind(datos_2019_mun_totales, datos_2020_mun_totales)
+
+datos_tasas_anuales_mun <- rbind(datos_2019_mun_tasas, datos_2020_mun_tasas)
+
+```
+
+```{r datos-mod-anuales-mun, echo=FALSE}
+
+### Incidencia anual de delitos en números absolutos para los municipios y proyección 2020
+
+#datos para 2019
+
+datos_mod_2019_mun <- datos_modalidad_mun_long %>% 
+  filter(Anual %in% c("2015", "2016", "2017", "2018", "2019")) 
+
+datos_mod_2019_mun <- aggregate(Incidencia ~ Subtipo + Modalidad + Clave_ent + Entidad + Clave_mun + Municipio + Anual , data= datos_mod_2019_mun, sum)
+
+#insertamos población en rango de años a tratar
+
+pob_2019 <- pobtot %>% 
+  filter(Anual %in% c("2015", "2016", "2017", "2018", "2019")) 
+
+datos_mod_2019_mun <- left_join(datos_mod_2019_mun, pob_2019, by= c("Clave_ent", "Clave_mun", "Anual"))
+
+datos_mod_2019_mun$Entidad.y <- NULL
+datos_mod_2019_mun$Municipio.y <- NULL
+
+names(datos_mod_2019_mun)[4] <- "Entidad"
+names(datos_mod_2019_mun)[6] <- "Municipio"
+
+datos_mod_2019_mun <- datos_mod_2019_mun %>% 
+  mutate(Tasa_anual = round(((Incidencia/Pob)*100000), 2))
+
+datos_mod_2019_mun_totales <- datos_mod_2019_mun %>% 
+  select(1:8)
+
+datos_mod_2019_mun_tasas <- datos_mod_2019_mun %>% 
+  select(1:7, 10) 
+
+#datos 2020 
+
+datos_mod_2020_mun <- datos_modalidad_mun_long[datos_modalidad_mun_long$Anual== "2019" & datos_modalidad_mun_long$Mes == "junio" | datos_modalidad_mun_long$Anual== "2019" & datos_modalidad_mun_long$Mes == "julio" | datos_modalidad_mun_long$Anual== "2019" & datos_modalidad_mun_long$Mes == "agosto" | datos_modalidad_mun_long$Anual== "2019" & datos_modalidad_mun_long$Mes == "septiembre" | datos_modalidad_mun_long$Anual== "2019" & datos_modalidad_mun_long$Mes == "octubre" | datos_modalidad_mun_long$Anual== "2019" & datos_modalidad_mun_long$Mes == "noviembre" | datos_modalidad_mun_long$Anual== "2019" & datos_modalidad_mun_long$Mes == "diciembre" | datos_modalidad_mun_long$Anual== "2020",]
+
+datos_mod_2020_mun <- aggregate(Incidencia ~ Subtipo + Modalidad + Clave_ent + Entidad + Clave_mun + Municipio, data= datos_mod_2020_mun, sum)
+
+#insertamos población en rango de años a tratar
+
+pob_2020 <- pobtot %>% 
+  filter(Anual %in% "2020") 
+
+pob_2020 <- pob_2020 %>% 
+  select(1:4,6)
+
+datos_mod_2020_mun <- left_join(datos_mod_2020_mun, pob_2020, by= c("Clave_ent", "Clave_mun"))
+
+datos_mod_2020_mun$Entidad.y <- NULL
+datos_mod_2020_mun$Municipio.y <- NULL
+
+names(datos_mod_2020_mun)[4] <- "Entidad" 
+names(datos_mod_2020_mun)[6] <- "Municipio" 
+
+datos_mod_2020_mun <- datos_mod_2020_mun %>% 
+  mutate(Tasa_anual = round(((Incidencia/Pob)*100000), 2))
+
+datos_mod_2020_mun$Anual <- 2020
+
+datos_mod_2020_mun_totales <- datos_mod_2020_mun %>% 
+  select(1:6, 10, 7)
+
+datos_mod_2020_mun_tasas <- datos_mod_2020_mun %>% 
+  select(1:6, 10, 9)
+
+datos_totales_anuales_mod_mun <- rbind(datos_mod_2019_mun_totales, datos_mod_2020_mun_totales)
+
+datos_tasas_anuales_mod_mun <- rbind(datos_mod_2019_mun_tasas, datos_mod_2020_mun_tasas)
+
+```
+
+```{r datos-totales-ent, echo=FALSE}
+#Chiapas#
+
+Chiapas_mes <- datos_incidencia_entidad %>%
+  filter(Entidad=="Chiapas")
+
+Chiapas_long <- datos_incidencia_ent_long %>%
+  filter(Entidad=="Chiapas")
+
+Chiapas_totales_anual <- datos_totales_anuales_ent %>%
+  filter(Entidad=="Chiapas")
+
+Chiapas_tasas_anual <- datos_tasas_anuales_ent %>%
+  filter(Entidad=="Chiapas")
+
+Chiapas_mod_mes <- datos_modalidad_entidad %>%
+  filter(Entidad=="Chiapas")
+
+Chiapas_mod_long <- datos_modalidad_ent_long %>%
+  filter(Entidad=="Chiapas")
+
+Chiapas_totales_mod_anual <- datos_totales_anuales_mod_ent %>%
+  filter(Entidad=="Chiapas")
+
+Chiapas_tasas_mod_anual <- datos_tasas_anuales_mod_ent %>%
+  filter(Entidad=="Chiapas")
+
+##Campeche
+
+Campeche_mes <- datos_incidencia_entidad %>%
+  filter(Entidad=="Campeche")
+
+Campeche_long <- datos_incidencia_ent_long %>%
+  filter(Entidad=="Campeche")
+
+Campeche_totales_anual <- datos_totales_anuales_ent %>%
+  filter(Entidad=="Campeche")
+
+Campeche_tasas_anual <- datos_tasas_anuales_ent %>%
+  filter(Entidad=="Campeche")
+
+Campeche_mod_mes <- datos_modalidad_entidad %>%
+  filter(Entidad=="Campeche")
+
+Campeche_mod_long <- datos_modalidad_ent_long %>%
+  filter(Entidad=="Campeche")
+
+Campeche_totales_mod_anual <- datos_totales_anuales_mod_ent %>%
+  filter(Entidad=="Campeche")
+
+Campeche_tasas_mod_anual <- datos_tasas_anuales_mod_ent %>%
+  filter(Entidad=="Campeche")
+
+##Tabasco
+
+Tabasco_mes <- datos_incidencia_entidad %>%
+  filter(Entidad=="Tabasco")
+
+Tabasco_long <- datos_incidencia_ent_long %>%
+  filter(Entidad=="Tabasco")
+
+Tabasco_totales_anual <- datos_totales_anuales_ent %>%
+  filter(Entidad=="Tabasco")
+
+Tabasco_tasas_anual <- datos_tasas_anuales_ent %>%
+  filter(Entidad=="Tabasco")
+
+Tabasco_mod_mes <- datos_modalidad_entidad %>%
+  filter(Entidad=="Tabasco")
+
+Tabasco_mod_long <- datos_modalidad_ent_long %>%
+  filter(Entidad=="Tabasco")
+
+Tabasco_totales_mod_anual <- datos_totales_anuales_mod_ent %>%
+  filter(Entidad=="Tabasco")
+
+Tabasco_tasas_mod_anual <- datos_tasas_anuales_mod_ent %>%
+  filter(Entidad=="Tabasco")
+
+```
+
+# Delitos de alto impacto en la entidad y munipio de interés
+
+## Homicidio doloso 
+## Datos comparativos
+
+### Tabla comparativa de tasas anuales de homicidio doloso
+```{r datos-anuales-comparativo-hd, echo=FALSE}
+
+Homicidio_nac_tasa_anual <- datos_tasas_anuales_nac %>% 
+  filter(Subtipo== "Homicidio doloso") %>% 
+  select(1, 3:4)
+
+names(Homicidio_nac_tasa_anual)[1] <- "Delimitación geográfica" 
+
+Homicidio_chiapas_tasa_anual <- Chiapas_tasas_anual %>%
+  filter(Subtipo=="Homicidio doloso") %>% 
+  select(3:5)
+
+names(Homicidio_chiapas_tasa_anual)[1] <- "Delimitación geográfica" 
+
+Homicidio_campeche_tasa_anual <- Campeche_tasas_anual %>%
+  filter(Subtipo=="Homicidio doloso") %>% 
+  select(3:5)
+
+names(Homicidio_campeche_tasa_anual)[1] <- "Delimitación geográfica" 
+
+Homicidio_tabasco_tasa_anual <- Tabasco_tasas_anual %>%
+  filter(Subtipo=="Homicidio doloso") %>% 
+  select(3:5)
+
+names(Homicidio_tabasco_tasa_anual)[1] <- "Delimitación geográfica" 
+
+Homicidio_comparativo <- rbind(Homicidio_nac_tasa_anual, Homicidio_chiapas_tasa_anual, Homicidio_campeche_tasa_anual, Homicidio_tabasco_tasa_anual)
+
+Homicidio_tabla <- spread(Homicidio_comparativo, Anual, Tasa_anual)
+
+kable(Homicidio_tabla, caption = "Tasas anuales de homicidio doloso en comparativa") %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F)
+```
+
+### Histograma comparativo de tasas anuales de homicidio doloso 
+```{r hist-homicidio-comparativo, echo=FALSE, warning= FALSE, fig.width = 6, fig.height = 3}
+
+ggplot(Homicidio_comparativo, aes(x = Anual, y = Tasa_anual)) + 
+  geom_line(aes(color = `Delimitación geográfica`, group = `Delimitación geográfica`), size = 2, 
+            alpha = 0.5) +
+  scale_y_continuous(limits = c(0,25)) +
+  geom_text_repel(aes(x = Anual, y = Tasa_anual,label= Tasa_anual), 
+                            position = position_dodge(width=0.9), vjust= -.3  ,size=3) +
+  theme_bw() +
+  theme(legend.position="bottom") +
+  scale_color_manual(values = c( "#005E6E", "#00234C", "#00B08B", "#93CDDD" )) +
+  scale_fill_manual(values = c( "#005E6E", "#00234C", "#00B08B", "#93CDDD" )) +
+  labs( 
+    title = "Comparativo de tasas anuales de homicidio doloso",
+    x= "Año",
+    y = "Tasa por cada cien mil habitantes")
+
+
+```
+
+## Secuestro en la entidad de interés
+
+## Datos comparativos
+
+### Tabla comparativa de tasas anuales de secuestro
+```{r datos-anuales-secuestro-comparativo, echo=FALSE}
+
+Secuestro_nac_tasa_anual <- datos_tasas_anuales_nac %>% 
+  filter(Subtipo== "Secuestro") %>% 
+  select(1, 3:4)
+
+names(Secuestro_nac_tasa_anual)[1] <- "Delimitación geográfica" 
+
+Secuestro_chiapas_tasa_anual <- Chiapas_tasas_anual %>%
+  filter(Subtipo=="Secuestro") %>% 
+  select(3:5)
+
+names(Secuestro_chiapas_tasa_anual)[1] <- "Delimitación geográfica" 
+
+Secuestro_campeche_tasa_anual <- Campeche_tasas_anual %>%
+  filter(Subtipo=="Secuestro") %>% 
+  select(3:5)
+
+names(Secuestro_campeche_tasa_anual)[1] <- "Delimitación geográfica" 
+
+Secuestro_tabasco_tasa_anual <- Tabasco_tasas_anual %>%
+  filter(Subtipo=="Secuestro") %>% 
+  select(3:5)
+
+names(Secuestro_tabasco_tasa_anual)[1] <- "Delimitación geográfica" 
+
+Secuestro_comparativo <- rbind(Secuestro_nac_tasa_anual, Secuestro_chiapas_tasa_anual, Secuestro_campeche_tasa_anual, Secuestro_tabasco_tasa_anual)
+
+Secuestro_tabla <- spread(Secuestro_comparativo, Anual, Tasa_anual)
+
+kable(Secuestro_tabla, caption = "Tasas anuales de secuestro en comparativa") %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F)
+```
+
+###  Gráfica comparativa de tasas anuales de secuestro
+```{r hist-secuestro-comparativo, echo=FALSE, warning= FALSE, fig.width = 6, fig.height = 3}
+
+ggplot(Secuestro_comparativo, aes(x = Anual, y = Tasa_anual)) + 
+  geom_line(aes(color = `Delimitación geográfica`, group = `Delimitación geográfica`), size = 2, 
+            alpha = 0.5) +
+  scale_y_continuous(limits = c(0,5)) +
+  geom_text_repel(aes(x = Anual, y = Tasa_anual,label= Tasa_anual), 
+                            position = position_dodge(width=0.9), vjust= -.3  ,size=3) +
+  theme_bw() +
+  theme(legend.position="bottom") +
+  scale_color_manual(values = c( "#005E6E", "#00234C", "#00B08B", "#93CDDD" )) +
+  scale_fill_manual(values = c( "#005E6E", "#00234C", "#00B08B", "#93CDDD" )) +
+  labs( 
+    title = "Comparativo de tasas anuales de secuestro",
+    x= "Año",
+    y = "Tasa por cada cien mil habitantes")
+```
+
+## Extorsión en la entidad de interés
+
+## Datos comparativos
+
+### Tabla comparativa de tasas anuales de extorsión
+```{r datos-anuales-ext-comparativo, echo=FALSE}
+
+Extorsion_nac_tasa_anual <- datos_tasas_anuales_nac %>% 
+  filter(Subtipo== "Extorsión") %>% 
+  select(1, 3:4)
+
+names(Extorsion_nac_tasa_anual)[1] <- "Delimitación geográfica" 
+
+Extorsion_chiapas_tasa_anual <- Chiapas_tasas_anual %>%
+  filter(Subtipo=="Extorsión") %>% 
+  select(3:5)
+
+names(Extorsion_chiapas_tasa_anual)[1] <- "Delimitación geográfica" 
+
+Extorsion_campeche_tasa_anual <- Campeche_tasas_anual %>%
+  filter(Subtipo=="Extorsión") %>% 
+  select(3:5)
+
+names(Extorsion_campeche_tasa_anual)[1] <- "Delimitación geográfica" 
+
+Extorsion_tabasco_tasa_anual <- Tabasco_tasas_anual %>%
+  filter(Subtipo=="Extorsión") %>% 
+  select(3:5)
+
+names(Extorsion_tabasco_tasa_anual)[1] <- "Delimitación geográfica" 
+
+Extorsion_comparativo <- rbind(Extorsion_nac_tasa_anual, Extorsion_chiapas_tasa_anual, Extorsion_campeche_tasa_anual, Extorsion_tabasco_tasa_anual)
+
+Extorsion_tabla <- spread(Extorsion_comparativo, Anual, Tasa_anual)
+
+kable(Extorsion_tabla, caption = "Tasas anuales de extorsión en comparativa") %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F)
+```
+
+###  Gráfica comparativa de tasas anuales de extorsión
+```{r hist-extorsion-comparativo, echo=FALSE, warning= FALSE, fig.width = 6, fig.height = 3}
+
+ggplot(Extorsion_comparativo, aes(x = Anual, y = Tasa_anual)) + 
+  geom_line(aes(color = `Delimitación geográfica`, group = `Delimitación geográfica`), size = 2, 
+            alpha = 0.5) +
+  scale_y_continuous(limits = c(0,15)) +
+  geom_text_repel(aes(x = Anual, y = Tasa_anual,label= Tasa_anual), 
+                            position = position_dodge(width=0.9), vjust= -.3  ,size=3) +
+  theme_bw() +
+  theme(legend.position="bottom") +
+  scale_color_manual(values = c( "#005E6E", "#00234C", "#00B08B", "#93CDDD" )) +
+  scale_fill_manual(values = c( "#005E6E", "#00234C", "#00B08B", "#93CDDD" )) +
+  labs( 
+    title = "Comparativo de tasas anuales de extorsión",
+    x= "Año",
+    y = "Tasa por cada cien mil habitantes")
+
+```
+
+## Robo de vehículo con violencia en la entidad de interés
+
+## Datos comparativos
+
+### Tabla comparativa de tasas anuales de robo de vehículo con violencia
+```{r datos-anuales-rvcv-comparativo, echo=FALSE}
+
+RVCV_nac_tasa_anual <- datos_tasas_anuales_nac %>% 
+  filter(Subtipo== "Robo de vehículo automotor") %>% 
+  select(1, 3:4)
+
+names(RVCV_nac_tasa_anual)[1] <- "Delimitación geográfica" 
+
+RVCV_chiapas_tasa_anual <- Chiapas_tasas_anual %>%
+  filter(Subtipo=="Robo de vehículo automotor") %>% 
+  select(3:5)
+
+names(RVCV_chiapas_tasa_anual)[1] <- "Delimitación geográfica" 
+
+RVCV_campeche_tasa_anual <- Campeche_tasas_anual %>%
+  filter(Subtipo=="Robo de vehículo automotor") %>% 
+  select(3:5)
+
+names(RVCV_campeche_tasa_anual)[1] <- "Delimitación geográfica" 
+
+RVCV_tabasco_tasa_anual <- Tabasco_tasas_anual %>%
+  filter(Subtipo=="Robo de vehículo automotor") %>% 
+  select(3:5)
+
+names(RVCV_tabasco_tasa_anual)[1] <- "Delimitación geográfica" 
+
+RVCV_comparativo <- rbind(RVCV_nac_tasa_anual, RVCV_chiapas_tasa_anual, RVCV_campeche_tasa_anual, RVCV_tabasco_tasa_anual)
+
+RVCV_tabla <- spread(RVCV_comparativo, Anual, Tasa_anual)
+
+kable(RVCV_tabla, caption = "Tasas anuales de robo de vehículo con violencia en comparativa") %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F)
+```
+
+###  Gráfica comparativa de tasas anuales de robo de vehículo con violencia
+```{r hist-rvcv-comparativo, echo=FALSE, warning= FALSE, fig.width = 6, fig.height = 3}
+
+ggplot(RVCV_comparativo, aes(x = Anual, y = Tasa_anual)) + 
+  geom_line(aes(color = `Delimitación geográfica`, group = `Delimitación geográfica`), size = 2, 
+            alpha = 0.5) +
+  scale_y_continuous(limits = c(0,75)) +
+  geom_text_repel(aes(x = Anual, y = Tasa_anual,label= Tasa_anual), 
+                            position = position_dodge(width=0.9), vjust= -.3  ,size=3) +
+  theme_bw() +
+  theme(legend.position="bottom") +
+  scale_color_manual(values = c( "#005E6E", "#00234C", "#00B08B", "#93CDDD" )) +
+  scale_fill_manual(values = c( "#005E6E", "#00234C", "#00B08B", "#93CDDD" )) +
+  labs( 
+    title = "Comparativo de tasas anuales de robo de vehículo con violencia",
+    x= "Año",
+    y = "Tasa por cada cien mil habitantes")
+
+```
+
+## Robo de maquinaria en sus distintas modalidades en la entidad de interés
+
+## Datos comparativos
+
+### Tabla comparativa de tasas anuales de robo de maquinaria (robo de cables, tubos y otros objetos destinados a servicios públicos con y sin violencia) 
+```{r datos-anuales-r-cab-comparativo, echo=FALSE}
+
+RMaq_1_nac_tasa_anual <- datos_tasas_anuales_mod_nac %>% 
+  filter(Modalidad=="Robo de cables, tubos y otros objetos destinados a servicios públicos") %>% 
+  select(1, 4:5)
+
+names(RMaq_1_nac_tasa_anual)[1] <- "Delimitación geográfica" 
+
+RMaq_1_chiapas_tasa_anual <- Chiapas_tasas_mod_anual %>%
+  filter(Modalidad=="Robo de cables, tubos y otros objetos destinados a servicios públicos") %>% 
+  select(4:6)
+
+names(RMaq_1_chiapas_tasa_anual)[1] <- "Delimitación geográfica" 
+
+RMaq_1_campeche_tasa_anual <- Campeche_tasas_mod_anual %>%
+  filter(Modalidad=="Robo de cables, tubos y otros objetos destinados a servicios públicos") %>% 
+  select(4:6)
+
+names(RMaq_1_campeche_tasa_anual)[1] <- "Delimitación geográfica" 
+
+RMaq_1_tabasco_tasa_anual <- Tabasco_tasas_mod_anual %>%
+  filter(Modalidad=="Robo de cables, tubos y otros objetos destinados a servicios públicos") %>% 
+  select(4:6)
+
+names(RMaq_1_tabasco_tasa_anual)[1] <- "Delimitación geográfica" 
+
+RMaq_1_comparativo <- rbind(RMaq_1_nac_tasa_anual, RMaq_1_chiapas_tasa_anual, RMaq_1_campeche_tasa_anual, RMaq_1_tabasco_tasa_anual)
+
+RMaq_1_tabla <- spread(RMaq_1_comparativo, Anual, Tasa_anual)
+
+kable(RMaq_1_tabla, caption = "Tasas anuales de robo de maquinaria en su modalidad de robo de cables, tubos y otros objetos destinados a servicios públicos con y sin violencia en comparativa") %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F)
+```
+
+###  Gráfica comparativa de tasas anuales de robo de maquinaria (robo de cables, tubos y otros objetos destinados a servicios públicos con y sin violencia)
+```{r hist-r-cab-comparativo, echo=FALSE, warning= FALSE, fig.width = 6, fig.height = 3}
+
+ggplot(RMaq_1_comparativo, aes(x = Anual, y = Tasa_anual)) + 
+  geom_line(aes(color = `Delimitación geográfica`, group = `Delimitación geográfica`), size = 2, 
+            alpha = 0.5) +
+  scale_y_continuous(limits = c(0,3)) +
+  geom_text(aes(x = Anual, y = Tasa_anual,label= Tasa_anual), 
+                            position = position_dodge(width=0.9), vjust= -.3  ,size=3) +
+  theme_bw() +
+  theme(legend.position="bottom") +
+  scale_color_manual(values = c( "#005E6E", "#00234C", "#00B08B", "#93CDDD" )) +
+  scale_fill_manual(values = c( "#005E6E", "#00234C", "#00B08B", "#93CDDD" )) +
+  labs( 
+    title = "Comparativo de tasas anuales de robo de cables, tubos \ny otros objetos destinados a servicios públicos",
+    x= "Año",
+    y = "Tasa por cada cien mil habitantes")
+
+```
+
+## Datos comparativos
+
+### Tabla comparativa de tasas anuales de robo de maquinaria (robo de herramienta industrial o agrícola con y sin violencia) 
+```{r datos-anuales-r-herr-comparativo, echo=FALSE}
+
+RMaq_2_nac_tasa_anual <- datos_tasas_anuales_mod_nac %>% 
+  filter(Modalidad=="Robo de herramienta industrial o agrícola") %>% 
+  select(1, 4:5)
+
+names(RMaq_2_nac_tasa_anual)[1] <- "Delimitación geográfica" 
+
+RMaq_2_chiapas_tasa_anual <- Chiapas_tasas_mod_anual %>%
+  filter(Modalidad=="Robo de herramienta industrial o agrícola") %>% 
+  select(4:6)
+
+names(RMaq_2_chiapas_tasa_anual)[1] <- "Delimitación geográfica" 
+
+RMaq_2_campeche_tasa_anual <- Campeche_tasas_mod_anual %>%
+  filter(Modalidad=="Robo de herramienta industrial o agrícola") %>% 
+  select(4:6)
+
+names(RMaq_2_campeche_tasa_anual)[1] <- "Delimitación geográfica" 
+
+RMaq_2_tabasco_tasa_anual <- Tabasco_tasas_mod_anual %>%
+  filter(Modalidad=="Robo de herramienta industrial o agrícola") %>% 
+  select(4:6)
+
+names(RMaq_2_tabasco_tasa_anual)[1] <- "Delimitación geográfica" 
+
+RMaq_2_comparativo <- rbind(RMaq_2_nac_tasa_anual, RMaq_2_chiapas_tasa_anual, RMaq_2_campeche_tasa_anual, RMaq_2_tabasco_tasa_anual)
+
+RMaq_2_tabla <- spread(RMaq_2_comparativo, Anual, Tasa_anual)
+
+kable(RMaq_2_tabla, caption = "Tasas anuales de robo de maquinaria en su modalidad de robo de herramienta industrial o agrícola con y sin violencia en comparativa") %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F)
+```
+
+###  Gráfica comparativa de tasas anuales de robo de maquinaria (robo de herramienta industrial o agrícola con y sin violencia)
+```{r hist-r-herr-comparativo, echo=FALSE, warning= FALSE, fig.width = 6, fig.height = 3}
+
+ggplot(RMaq_2_comparativo, aes(x = Anual, y = Tasa_anual)) + 
+  geom_line(aes(color = `Delimitación geográfica`, group = `Delimitación geográfica`), size = 2, 
+            alpha = 0.5) +
+  scale_y_continuous(limits = c(0,1)) +
+  geom_text_repel(aes(x = Anual, y = Tasa_anual,label= Tasa_anual), 
+                            position = position_dodge(width=0.9), vjust= -.3  ,size=3) +
+  theme_bw() +
+  theme(legend.position="bottom") +
+  scale_color_manual(values = c( "#005E6E", "#00234C", "#00B08B", "#93CDDD" )) +
+  scale_fill_manual(values = c( "#005E6E", "#00234C", "#00B08B", "#93CDDD" )) +
+  labs( 
+    title = "Comparativo de tasas anuales de robo de herramienta \nindustrial o agrícola",
+    x= "Año",
+    y = "Tasa por cada cien mil habitantes")
+
+```
+
+## Datos comparativos
+
+### Tabla comparativa de tasas anuales de robo de maquinaria (robo de tractores con y sin violencia) 
+```{r datos-anuales-r-traccomparativo, echo=FALSE}
+
+RMaq_3_nac_tasa_anual <- datos_tasas_anuales_mod_nac %>% 
+  filter(Modalidad=="Robo de tractores") %>% 
+  select(1, 4:5)
+
+names(RMaq_3_nac_tasa_anual)[1] <- "Delimitación geográfica" 
+
+RMaq_3_chiapas_tasa_anual <- Chiapas_tasas_mod_anual %>%
+  filter(Modalidad=="Robo de tractores") %>% 
+  select(4:6)
+
+names(RMaq_3_chiapas_tasa_anual)[1] <- "Delimitación geográfica" 
+
+RMaq_3_campeche_tasa_anual <- Campeche_tasas_mod_anual %>%
+  filter(Modalidad=="Robo de tractores") %>% 
+  select(4:6)
+
+names(RMaq_3_campeche_tasa_anual)[1] <- "Delimitación geográfica" 
+
+RMaq_3_tabasco_tasa_anual <- Tabasco_tasas_mod_anual %>%
+  filter(Modalidad=="Robo de tractores") %>% 
+  select(4:6)
+
+names(RMaq_3_tabasco_tasa_anual)[1] <- "Delimitación geográfica" 
+
+RMaq_3_comparativo <- rbind(RMaq_3_nac_tasa_anual, RMaq_3_chiapas_tasa_anual, RMaq_3_campeche_tasa_anual, RMaq_3_tabasco_tasa_anual)
+
+RMaq_3_tabla <- spread(RMaq_3_comparativo, Anual, Tasa_anual)
+
+kable(RMaq_3_tabla, caption = "Tasas anuales de robo de maquinaria en su modalidad de robo de tractores con y sin violencia en comparativa") %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F)
+```
+
+###  Gráfica comparativa de tasas anuales de robo de maquinaria (robo de tractores con y sin violencia)
+```{r hist-r-traccomparativo, echo=FALSE, warning= FALSE, fig.width = 6, fig.height = 3}
+
+ggplot(RMaq_3_comparativo, aes(x = Anual, y = Tasa_anual)) + 
+  geom_line(aes(color = `Delimitación geográfica`, group = `Delimitación geográfica`), size = 2, 
+            alpha = 0.5) +
+  scale_y_continuous(limits = c(0,0.5)) +
+  geom_text(aes(x = Anual, y = Tasa_anual,label= Tasa_anual), 
+                            position = position_dodge(width=0.9), vjust= -.3  ,size=3) +
+  theme_bw() +
+  theme(legend.position="bottom") +
+  scale_color_manual(values = c( "#005E6E", "#00234C", "#00B08B", "#93CDDD" )) +
+  scale_fill_manual(values = c( "#005E6E", "#00234C", "#00B08B", "#93CDDD" )) +
+  labs( 
+    title = "Comparativo de tasas anuales de robo de tractores",
+    x= "Año",
+    y = "Tasa por cada cien mil habitantes")
+
+```
+
+
+
